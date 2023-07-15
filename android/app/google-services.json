@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "137638127071",
+    "project_id": "storyplayer-4a21e",
+    "storage_bucket": "storyplayer-4a21e.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:137638127071:android:6b04b06868c36c0784d06a",
+        "android_client_info": {
+          "package_name": "com.example.android_studio_projects"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "137638127071-in0phoiua97rn5s24pskra2fa5ag0u7j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC77MK4xOLE8dP0MC98zWYYaEX82-Zk9bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "137638127071-in0phoiua97rn5s24pskra2fa5ag0u7j.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "137638127071-0b3ubb1s08l7s5h43rigo5cb7qalq8cp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.storyPlayer"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:137638127071:android:2ff251833e2d65a784d06a",
+        "android_client_info": {
+          "package_name": "com.example.story_player"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "137638127071-in0phoiua97rn5s24pskra2fa5ag0u7j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC77MK4xOLE8dP0MC98zWYYaEX82-Zk9bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "137638127071-in0phoiua97rn5s24pskra2fa5ag0u7j.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "137638127071-0b3ubb1s08l7s5h43rigo5cb7qalq8cp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.storyPlayer"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
