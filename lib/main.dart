@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,34 +35,73 @@ class UserController extends GetxController {
   }
 }
 
-
 class StoryController extends GetxController {
   final UserController userController = Get.find<UserController>();
   final stories = <Story>[].obs;
   final _currentIndex = 0.obs;
+  List<RxDouble> _progressList = [];  // List to track the progress of each story
+  Timer? _timer;
   int _currentUserIndex = 0;
 
   Story get currentStory => stories[_currentIndex.value];
 
+  @override
+  void onInit() {
+    ever(_currentIndex, (_) {
+      if (_progressList != null && _progressList.isNotEmpty) {
+        startTimer();
+      }
+    });
+    super.onInit();
+  }
+
+  @override
+  void onClose() {
+    _timer?.cancel();
+    super.onClose();
+  }
+
+  void startTimer({bool resetProgress = true}) {
+    const oneSec = const Duration(seconds: 1);
+    int duration = currentStory.mediaType == '1' ? 5 : 10;
+    _timer?.cancel();
+    if (resetProgress) {
+      _progressList[_currentIndex.value].value = 0.0;  // Reset the progress of the current story
+    }
+    _timer = Timer.periodic(oneSec, (Timer timer) {
+      if (_progressList[_currentIndex.value].value < 1.0) {
+        _progressList[_currentIndex.value].value += 1.0 / duration;
+      } else {
+        timer.cancel();
+        nextStory(true);
+      }
+      update();
+    });
+  }
+
   void fetchStories(String userId) async {
     _currentUserIndex = userController.users.indexWhere((user) => user.id == userId);
     StoryData storyData = StoryData();
-    stories.value = await storyData.getStoriesForUser(userId);
-    _currentIndex.value = 0;  // reset to first story when fetching new stories
+    var fetchedStories = await storyData.getStoriesForUser(userId); // fetch stories first
+    stories.value = fetchedStories; // then assign it to the observable list
+    _currentIndex.value = 0;
+    _progressList = List.filled(stories.length, 0.0.obs); // Initialize the progress list after stories are fetched
     update();
+    startTimer(); // Start timer after fetching new stories
   }
 
-  void nextStory() {
+// Update nextStory to allow jumping to the next user manually
+  void nextStory([bool fromTimer = false]) {
     if (_currentIndex.value < stories.length - 1) {
       _currentIndex.value += 1;
-      update();
+      startTimer(resetProgress: false);  // Start the timer for the next story without resetting the progress
     } else {
       // If there are more users
       if (_currentUserIndex < userController.users.length - 1) {
         _currentUserIndex++;
         fetchStories(userController.users[_currentUserIndex].id);
-      } else {
-        // If there are no more users, navigate back to user screen
+      } else if(fromTimer || (_currentUserIndex == userController.users.length - 1)) {
+        // If there are no more users or it's the last story of the last user, navigate back to user screen
         Get.back();
       }
     }
@@ -68,6 +109,7 @@ class StoryController extends GetxController {
 
   void prevStory() {
     if (_currentIndex.value > 0) {
+      _progressList[_currentIndex.value].value = 0.0; // Reset progress of the story we're leaving
       _currentIndex.value -= 1;
       update();
     } else {
@@ -82,6 +124,8 @@ class StoryController extends GetxController {
     }
   }
 }
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -158,6 +202,8 @@ class UserWidget extends StatelessWidget {
 }
 
 class StoryScreen extends StatelessWidget {
+  const StoryScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return GetBuilder<StoryController>(
@@ -173,9 +219,9 @@ class StoryScreen extends StatelessWidget {
           },
           child: Scaffold(
             appBar: AppBar(
-              title: Text('Story Screen'),
+              title: const Text('Story Screen'),
               bottom: PreferredSize(
-                preferredSize: Size.fromHeight(4.0),
+                preferredSize: const Size.fromHeight(4.0),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: Row(
@@ -185,10 +231,15 @@ class StoryScreen extends StatelessWidget {
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 2.0),
                           height: 4.0,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(2.0),
-                          ),
+                          child: Obx( () => LinearProgressIndicator(
+                            value: index < storyController._currentIndex.value
+                                ? 1.0
+                                : index == storyController._currentIndex.value
+                                ? storyController._progressList[index].value
+                                : 0.0,
+                            backgroundColor: Colors.grey,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          )),
                         ),
                       ),
                     ),
@@ -196,19 +247,17 @@ class StoryScreen extends StatelessWidget {
                 ),
               ),
             ),
-            body: Container(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('User ID: ${storyController.currentStory.userId}'),
-                    Text('Story ID: ${storyController.currentStory.id}'),
-                    Text('Media Type: ${storyController.currentStory.mediaType}'),
-                    storyController.currentStory.mediaType == '1'
-                        ? Image.network(storyController.currentStory.url)
-                        : Text('Video/GIF placeholder'),
-                  ],
-                ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('User ID: ${storyController.currentStory.userId}'),
+                  Text('Story ID: ${storyController.currentStory.id}'),
+                  Text('Media Type: ${storyController.currentStory.mediaType}'),
+                  storyController.currentStory.mediaType == '1'
+                      ? Image.network(storyController.currentStory.url)
+                      : Text('Video/GIF placeholder'),
+                ],
               ),
             ),
           ),
@@ -217,4 +266,6 @@ class StoryScreen extends StatelessWidget {
     );
   }
 }
+
+
 
