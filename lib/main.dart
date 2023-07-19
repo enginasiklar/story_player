@@ -1,9 +1,8 @@
 import 'dart:async';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 import 'story_model.dart';
 import 'user_model.dart';
@@ -24,8 +23,9 @@ class UserController extends GetxController {
     try {
       List<User> fetchedUsers = await _userData.getAllUsers();
       if (fetchedUsers.isNotEmpty) {
-        users.addAll(fetchedUsers);
+        users.assignAll(fetchedUsers);
         print('Users fetched successfully: ${users.length}');
+        update();  // force update
       } else {
         print('No users found.');
       }
@@ -33,22 +33,28 @@ class UserController extends GetxController {
       print('Failed to fetch users: $e');
     }
   }
+
+  void refreshUsers() {
+    users.clear();
+    fetchUsers();  // Assuming userData.getUsers() fetches the latest users
+  }
 }
 
 class StoryController extends GetxController {
   final UserController userController = Get.find<UserController>();
   final stories = <Story>[].obs;
   final _currentIndex = 0.obs;
-  List<RxDouble> _progressList = [];  // List to track the progress of each story
+  List<RxDouble> _progressList = [];
   Timer? _timer;
   int _currentUserIndex = 0;
+  final videoStatusNotifier = ValueNotifier<bool>(true); // Added ValueNotifier for video status
 
   Story get currentStory => stories[_currentIndex.value];
 
   @override
   void onInit() {
     ever(_currentIndex, (_) {
-      if (_progressList != null && _progressList.isNotEmpty) {
+      if (_progressList.isNotEmpty) {
         startTimer();
       }
     });
@@ -62,11 +68,11 @@ class StoryController extends GetxController {
   }
 
   void startTimer({bool resetProgress = true}) {
-    const oneSec = const Duration(seconds: 1);
-    int duration = currentStory.mediaType == '1' ? 5 : 10;
+    const oneSec = Duration(seconds: 1);
+    int duration = currentStory.duration ?? 5;
     _timer?.cancel();
     if (resetProgress) {
-      _progressList[_currentIndex.value].value = 0.0;  // Reset the progress of the current story
+      _progressList[_currentIndex.value].value = 0.0;
     }
     _timer = Timer.periodic(oneSec, (Timer timer) {
       if (_progressList[_currentIndex.value].value < 1.0) {
@@ -77,6 +83,19 @@ class StoryController extends GetxController {
       }
       update();
     });
+    if (currentStory.mediaType == '2') {
+      initializeVideoPlayer(currentStory.url);
+    }
+  }
+
+  void initializeVideoPlayer(String url) async {
+    final videoPlayerController = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+    );
+    await videoPlayerController.initialize();
+    videoPlayerController.play();
+    videoPlayerController.setLooping(false);
+    update();
   }
 
   void fetchStories(String userId) async {
@@ -123,15 +142,29 @@ class StoryController extends GetxController {
       }
     }
   }
+
+  _VideoPlayerWidgetState? _videoPlayerWidgetState;
+
+  void setVideoPlayerWidgetState(_VideoPlayerWidgetState state) {
+    _videoPlayerWidgetState = state;
+  }
+
+  void pauseStory() {
+    _timer?.cancel();
+    videoStatusNotifier.value = false; // Pause video
+  }
+
+  void resumeStory() {
+    startTimer(resetProgress: false);
+    videoStatusNotifier.value = true; // Play video
+  }
+
 }
-
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,);
-  UserData userData = UserData();
 
   Get.put(UserController()); // Add this line
   Get.put(StoryController()); // Add this line
@@ -150,29 +183,211 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const MainScreen(),
+      home: MainScreen(),
     );
   }
 }
 
 class MainScreen extends StatelessWidget {
-  const MainScreen({super.key});
+
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _urlController = TextEditingController();
+  final _mediaTypeController = TextEditingController();
+  String? _selectedUserId;
+
   @override
   Widget build(BuildContext context) {
     return GetBuilder<UserController>(
         init: UserController(),
         builder: (userController) {
           return Scaffold(
-            appBar: AppBar(title: Text('User Stories')),
-            body: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, // Change this value as needed
+            appBar: AppBar(
+              title: Text('User Stories'),
+              actions: <Widget>[
+                PopupMenuButton<String>(
+                  onSelected: (String result) {
+                    switch(result) {
+                      case 'Create User':
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false, // user must tap button!
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: Text('Create User'),
+                              content: SingleChildScrollView(
+                                child: Form(
+                                  key: _formKey,
+                                  child: ListBody(
+                                    children: <Widget>[
+                                      TextFormField(
+                                        controller: _nameController,
+                                        decoration: InputDecoration(labelText: 'Name'),
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Please enter a name';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                      TextFormField(
+                                        controller: _urlController,
+                                        decoration: InputDecoration(labelText: 'Profile Image Url'),
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Please enter a profile image url';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              actions: <Widget>[
+                                TextButton(
+                                  child: Text('Cancel'),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                                TextButton(
+                                  child: Text('Create'),
+                                  onPressed: () {
+                                    if (_formKey.currentState!.validate()) {
+                                      addUserToFirestore(
+                                          _nameController.text, _urlController.text);
+                                      _nameController.clear();
+                                      _urlController.clear();
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        break;
+                      case 'Create Story':
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false, // user must tap button!
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: Text('Create Story'),
+                              content: SingleChildScrollView(
+                                child: Form(
+                                  key: _formKey,
+                                  child: ListBody(
+                                    children: <Widget>[
+                                      DropdownButtonFormField<String>(
+                                        value: _selectedUserId,
+                                        hint: Text("Select User"),
+                                        items: userController.users.map((User user) {
+                                          return DropdownMenuItem<String>(
+                                            value: user.id,
+                                            child: Text(user.name),
+                                          );
+                                        }).toList(),
+                                        onChanged: (String? newValue) {
+                                          _selectedUserId = newValue!;
+                                        },
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Please select a user';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                      TextFormField(
+                                        controller: _urlController,
+                                        decoration: InputDecoration(labelText: 'Story Url'),
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Please enter a story url';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                      DropdownButtonFormField<String>(
+                                        value: _mediaTypeController.text.isNotEmpty ? _mediaTypeController.text : null,
+                                        hint: Text("Select Media Type"),
+                                        items: <String>['1', '2']
+                                            .map<DropdownMenuItem<String>>((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value == '1' ? 'Image' : 'Video'),
+                                          );
+                                        }).toList(),
+                                        onChanged: (String? newValue) {
+                                          _mediaTypeController.text = newValue!;
+                                        },
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Please select a media type';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              actions: <Widget>[
+                                TextButton(
+                                  child: Text('Cancel'),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                                TextButton(
+                                  child: Text('Create'),
+                                  onPressed: () {
+                                    if (_formKey.currentState!.validate()) {
+                                      addStoryToFirestore(
+                                          _selectedUserId!, _urlController.text, _mediaTypeController.text);
+                                      _urlController.clear();
+                                      _mediaTypeController.clear();
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        break;
+                    }
+                  },
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'Create User',
+                      child: Text('Create User'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'Create Story',
+                      child: Text('Create Story'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            body: RefreshIndicator(
+              onRefresh: () async {
+                // Here you call a function that fetches the latest data
+                // For example:
+                userController.refreshUsers();
+              },
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                ),
+                itemCount: userController.users.length,
+                itemBuilder: (context, index) => UserWidget(user: userController.users[index]),
               ),
-              itemCount: userController.users.length,
-              itemBuilder: (context, index) => UserWidget(user: userController.users[index]),
             ),
           );
-        }
+        },
     );
   }
 }
@@ -217,6 +432,12 @@ class StoryScreen extends StatelessWidget {
               storyController.nextStory();
             }
           },
+          onLongPressStart: (details) {
+            storyController.pauseStory(); // Pause the story
+          },
+          onLongPressEnd: (details) {
+            storyController.resumeStory(); // Resume the story
+          },
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Story Screen'),
@@ -231,7 +452,7 @@ class StoryScreen extends StatelessWidget {
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 2.0),
                           height: 4.0,
-                          child: Obx( () => LinearProgressIndicator(
+                          child: Obx(() => LinearProgressIndicator(
                             value: index < storyController._currentIndex.value
                                 ? 1.0
                                 : index == storyController._currentIndex.value
@@ -251,12 +472,19 @@ class StoryScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('User ID: ${storyController.currentStory.userId}'),
-                  Text('Story ID: ${storyController.currentStory.id}'),
-                  Text('Media Type: ${storyController.currentStory.mediaType}'),
-                  storyController.currentStory.mediaType == '1'
-                      ? Image.network(storyController.currentStory.url)
-                      : Text('Video/GIF placeholder'),
+                  Expanded(
+                    child: storyController.stories.isEmpty
+                        ? Center(child: CircularProgressIndicator())
+                        : storyController.currentStory.mediaType == '1'
+                        ? Image.network(storyController.currentStory.url)
+                        : StatefulBuilder(
+                      builder: (BuildContext context, StateSetter setState) {
+                        VideoPlayerWidget videoPlayerWidget = VideoPlayerWidget(url: storyController.currentStory.url);
+                        storyController.setVideoPlayerWidgetState(videoPlayerWidget.createState());
+                        return videoPlayerWidget;
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -267,5 +495,51 @@ class StoryScreen extends StatelessWidget {
   }
 }
 
+class VideoPlayerWidget extends StatefulWidget {
+  final String url;
 
+  VideoPlayerWidget({required this.url});
+
+  @override
+  _VideoPlayerWidgetState createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        setState(() {});
+        _controller.play();
+      });
+
+    // Listen to videoStatusNotifier and play or pause video accordingly
+    Get.find<StoryController>().videoStatusNotifier.addListener(() {
+      if (Get.find<StoryController>().videoStatusNotifier.value) {
+        _controller.play();
+      } else {
+        _controller.pause();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _controller.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _controller.value.isInitialized
+        ? AspectRatio(
+      aspectRatio: _controller.value.aspectRatio,
+      child: VideoPlayer(_controller),
+    )
+        : Container();
+  }
+}
 

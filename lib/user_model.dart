@@ -37,3 +37,16 @@ class UserData {
     return User.fromDocument(userDoc);
   }
 }
+
+Future<void> addUserToFirestore(String name, String profileImageUrl) async {
+  var docRef = FirebaseFirestore.instance.collection('users').doc(); // Automatically generate id
+  await docRef.set({
+    'id': docRef.id,
+    'name': name,
+    'profileUrl': profileImageUrl.isNotEmpty
+        ? profileImageUrl
+        : 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png',
+  });
+}
+
+
