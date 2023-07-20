@@ -107,7 +107,16 @@ class StoryController extends GetxController {
     _currentUserIndex = userController.users.indexWhere((user) => user.id == userId);
     StoryData storyData = StoryData();
     var fetchedStories = await storyData.getStoriesForUser(userId); // fetch stories first
-    stories.value = fetchedStories; // then assign it to the observable list
+
+    // Sort fetchedStories by duration
+    fetchedStories.sort((a, b) {
+      int durationA = a.duration ?? 5; // Default duration for images is 5 seconds
+      int durationB = b.duration ?? 5; // Default duration for images is 5 seconds
+      return durationB.compareTo(durationA);  // Reverse the comparison to get longest content first
+    });
+
+    stories.value = fetchedStories;
+
     if (_lastSeenStoryIndex[userId] != null) {
       _currentIndex.value = _lastSeenStoryIndex[userId];
     } else {
@@ -117,6 +126,11 @@ class StoryController extends GetxController {
     update();
     startTimer(); // Start timer after fetching new stories
   }
+
+
+
+
+
 
 
   void nextStory([bool fromTimer = false]) {
