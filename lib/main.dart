@@ -48,6 +48,8 @@ class StoryController extends GetxController {
   Timer? _timer;
   int _currentUserIndex = 0;
   final videoStatusNotifier = ValueNotifier<bool>(true); // Added ValueNotifier for video status
+  final _lastSeenStoryIndex = {}.obs;
+
 
   Story get currentStory => stories[_currentIndex.value];
 
@@ -69,10 +71,10 @@ class StoryController extends GetxController {
 
   void startTimer({bool resetProgress = true}) {
     const oneSec = Duration(seconds: 1);
-    int duration = currentStory.duration ?? 5;
+    int duration = currentStory.duration ?? 5;  // Default duration is 5 seconds for images
     _timer?.cancel();
     if (resetProgress) {
-      _progressList[_currentIndex.value].value = 0.0;
+      _progressList[_currentIndex.value].value = 0.0;  // Reset the progress of the current story
     }
     _timer = Timer.periodic(oneSec, (Timer timer) {
       if (_progressList[_currentIndex.value].value < 1.0) {
@@ -83,10 +85,13 @@ class StoryController extends GetxController {
       }
       update();
     });
+
+    // Only initialize and play the video if the media type is video
     if (currentStory.mediaType == '2') {
       initializeVideoPlayer(currentStory.url);
     }
   }
+
 
   void initializeVideoPlayer(String url) async {
     final videoPlayerController = VideoPlayerController.networkUrl(
@@ -103,19 +108,24 @@ class StoryController extends GetxController {
     StoryData storyData = StoryData();
     var fetchedStories = await storyData.getStoriesForUser(userId); // fetch stories first
     stories.value = fetchedStories; // then assign it to the observable list
-    _currentIndex.value = 0;
+    if (_lastSeenStoryIndex[userId] != null) {
+      _currentIndex.value = _lastSeenStoryIndex[userId];
+    } else {
+      _currentIndex.value = 0;
+    }
     _progressList = List.filled(stories.length, 0.0.obs); // Initialize the progress list after stories are fetched
     update();
     startTimer(); // Start timer after fetching new stories
   }
 
-// Update nextStory to allow jumping to the next user manually
+
   void nextStory([bool fromTimer = false]) {
     if (_currentIndex.value < stories.length - 1) {
       _currentIndex.value += 1;
+      _lastSeenStoryIndex[userController.users[_currentUserIndex].id] = _currentIndex.value;
       startTimer(resetProgress: false);  // Start the timer for the next story without resetting the progress
     } else {
-      // If there are more users
+      _lastSeenStoryIndex.remove(userController.users[_currentUserIndex].id);
       if (_currentUserIndex < userController.users.length - 1) {
         _currentUserIndex++;
         fetchStories(userController.users[_currentUserIndex].id);
@@ -130,9 +140,10 @@ class StoryController extends GetxController {
     if (_currentIndex.value > 0) {
       _progressList[_currentIndex.value].value = 0.0; // Reset progress of the story we're leaving
       _currentIndex.value -= 1;
+      _lastSeenStoryIndex[userController.users[_currentUserIndex].id] = _currentIndex.value;
       update();
     } else {
-      // If there are previous users
+      _lastSeenStoryIndex.remove(userController.users[_currentUserIndex].id);
       if (_currentUserIndex > 0) {
         _currentUserIndex--;
         fetchStories(userController.users[_currentUserIndex].id);
