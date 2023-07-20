@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cube_transition_plus/cube_transition_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,8 +61,14 @@ class StoryController extends GetxController {
         startTimer();
       }
     });
+
+    userController.users.isNotEmpty
+        ? fetchStories(userController.users[_currentUserIndex].id, Get.context!)
+        : null;
+
     super.onInit();
   }
+
 
   @override
   void onClose() {
@@ -92,7 +99,6 @@ class StoryController extends GetxController {
     }
   }
 
-
   void initializeVideoPlayer(String url) async {
     final videoPlayerController = VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -103,16 +109,15 @@ class StoryController extends GetxController {
     update();
   }
 
-  void fetchStories(String userId) async {
+  void fetchStories(String userId, BuildContext context) async {
     _currentUserIndex = userController.users.indexWhere((user) => user.id == userId);
     StoryData storyData = StoryData();
-    var fetchedStories = await storyData.getStoriesForUser(userId); // fetch stories first
+    var fetchedStories = await storyData.getStoriesForUser(userId);
 
-    // Sort fetchedStories by duration
     fetchedStories.sort((a, b) {
-      int durationA = a.duration ?? 5; // Default duration for images is 5 seconds
-      int durationB = b.duration ?? 5; // Default duration for images is 5 seconds
-      return durationB.compareTo(durationA);  // Reverse the comparison to get longest content first
+      int durationA = a.duration ?? 5;
+      int durationB = b.duration ?? 5;
+      return durationB.compareTo(durationA);
     });
 
     stories.value = fetchedStories;
@@ -122,29 +127,34 @@ class StoryController extends GetxController {
     } else {
       _currentIndex.value = 0;
     }
-    _progressList = List.filled(stories.length, 0.0.obs); // Initialize the progress list after stories are fetched
+
+    _progressList = List.filled(stories.length, 0.0.obs);
+
     update();
-    startTimer(); // Start timer after fetching new stories
+    startTimer();
+
+    // Use CubePageRoute for navigation
+    Navigator.of(context).pushReplacement(
+      CubePageRoute(
+        enterPage: StoryScreen(),
+        exitPage: StoryScreen(),
+        duration: const Duration(milliseconds: 900),
+      ),
+    );
   }
-
-
-
-
-
 
 
   void nextStory([bool fromTimer = false]) {
     if (_currentIndex.value < stories.length - 1) {
       _currentIndex.value += 1;
       _lastSeenStoryIndex[userController.users[_currentUserIndex].id] = _currentIndex.value;
-      startTimer(resetProgress: false);  // Start the timer for the next story without resetting the progress
+      startTimer(resetProgress: false);
     } else {
       _lastSeenStoryIndex.remove(userController.users[_currentUserIndex].id);
       if (_currentUserIndex < userController.users.length - 1) {
         _currentUserIndex++;
-        fetchStories(userController.users[_currentUserIndex].id);
+        fetchStories(userController.users[_currentUserIndex].id, Get.context!);
       } else if(fromTimer || (_currentUserIndex == userController.users.length - 1)) {
-        // If there are no more users or it's the last story of the last user, navigate back to user screen
         Get.back();
       }
     }
@@ -152,7 +162,7 @@ class StoryController extends GetxController {
 
   void prevStory() {
     if (_currentIndex.value > 0) {
-      _progressList[_currentIndex.value].value = 0.0; // Reset progress of the story we're leaving
+      _progressList[_currentIndex.value].value = 0.0;
       _currentIndex.value -= 1;
       _lastSeenStoryIndex[userController.users[_currentUserIndex].id] = _currentIndex.value;
       update();
@@ -160,13 +170,13 @@ class StoryController extends GetxController {
       _lastSeenStoryIndex.remove(userController.users[_currentUserIndex].id);
       if (_currentUserIndex > 0) {
         _currentUserIndex--;
-        fetchStories(userController.users[_currentUserIndex].id);
+        fetchStories(userController.users[_currentUserIndex].id, Get.context!);
       } else {
-        // If there are no previous users, navigate back to user screen
         Get.back();
       }
     }
   }
+
 
   _VideoPlayerWidgetState? _videoPlayerWidgetState;
 
@@ -424,10 +434,10 @@ class UserWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-        onTap: () {
-          Get.put(StoryController()).fetchStories(user.id); // Initialize StoryController and fetch stories
-          Get.to(() => StoryScreen());
-        },
+      onTap: () {
+        Get.put(StoryController()).fetchStories(user.id, context); // Initialize StoryController and fetch stories
+        Get.to(() => StoryScreen());
+      },
       child: Column(
         children: [
           CircleAvatar(
@@ -440,6 +450,7 @@ class UserWidget extends StatelessWidget {
     );
   }
 }
+
 
 class StoryScreen extends StatelessWidget {
   const StoryScreen({super.key});
