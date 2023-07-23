@@ -2,12 +2,242 @@ import 'dart:async';
 import 'package:cube_transition_plus/cube_transition_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 import 'story_model.dart';
 import 'user_model.dart';
 import 'package:get/get.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,);
+
+  Get.put(UserController()); // Add this line
+  Get.put(StoryController()); // Add this line
+
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return GetMaterialApp(  // Use GetMaterialApp instead of MaterialApp
+      title: 'Flutter Instagram Stories',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: MainScreen(),
+    );
+  }
+}
+
+class MainScreen extends StatelessWidget {
+
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _urlController = TextEditingController();
+  final _mediaTypeController = TextEditingController();
+  String? _selectedUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    return GetBuilder<UserController>(
+      init: UserController(),
+      builder: (userController) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('User Stories'),
+            actions: <Widget>[
+              PopupMenuButton<String>(
+                onSelected: (String result) {
+                  switch(result) {
+                    case 'Create User':
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: false, // user must tap button!
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Create User'),
+                            content: SingleChildScrollView(
+                              child: Form(
+                                key: _formKey,
+                                child: ListBody(
+                                  children: <Widget>[
+                                    TextFormField(
+                                      controller: _nameController,
+                                      decoration: const InputDecoration(labelText: 'Name'),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter a name';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    TextFormField(
+                                      controller: _urlController,
+                                      decoration: const InputDecoration(labelText: 'Profile Image Url'),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter a profile image url';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                child: const Text('Cancel'),
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                              TextButton(
+                                child: const Text('Create'),
+                                onPressed: () {
+                                  if (_formKey.currentState!.validate()) {
+                                    addUserToFirestore(
+                                        _nameController.text, _urlController.text);
+                                    _nameController.clear();
+                                    _urlController.clear();
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                      break;
+                    case 'Create Story':
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: false, // user must tap button!
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Create Story'),
+                            content: SingleChildScrollView(
+                              child: Form(
+                                key: _formKey,
+                                child: ListBody(
+                                  children: <Widget>[
+                                    DropdownButtonFormField<String>(
+                                      value: _selectedUserId,
+                                      hint: const Text("Select User"),
+                                      items: userController.users.map((User user) {
+                                        return DropdownMenuItem<String>(
+                                          value: user.id,
+                                          child: Text(user.name),
+                                        );
+                                      }).toList(),
+                                      onChanged: (String? newValue) {
+                                        _selectedUserId = newValue!;
+                                      },
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please select a user';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    TextFormField(
+                                      controller: _urlController,
+                                      decoration: const InputDecoration(labelText: 'Story Url'),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter a story url';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    DropdownButtonFormField<String>(
+                                      value: _mediaTypeController.text.isNotEmpty ? _mediaTypeController.text : null,
+                                      hint: const Text("Select Media Type"),
+                                      items: <String>['1', '2']
+                                          .map<DropdownMenuItem<String>>((String value) {
+                                        return DropdownMenuItem<String>(
+                                          value: value,
+                                          child: Text(value == '1' ? 'Image' : 'Video'),
+                                        );
+                                      }).toList(),
+                                      onChanged: (String? newValue) {
+                                        _mediaTypeController.text = newValue!;
+                                      },
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please select a media type';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                child: const Text('Cancel'),
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                              TextButton(
+                                child: const Text('Create'),
+                                onPressed: () {
+                                  if (_formKey.currentState!.validate()) {
+                                    addStoryToFirestore(
+                                        _selectedUserId!, _urlController.text, _mediaTypeController.text);
+                                    _urlController.clear();
+                                    _mediaTypeController.clear();
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'Create User',
+                    child: Text('Create User'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'Create Story',
+                    child: Text('Create Story'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: () async {
+              // Here you call a function that fetches the latest data
+              // For example:
+              userController.refreshUsers();
+            },
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+              ),
+              itemCount: userController.users.length,
+              itemBuilder: (context, index) => UserWidget(user: userController.users[index]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class UserController extends GetxController {
 
@@ -41,6 +271,30 @@ class UserController extends GetxController {
   }
 }
 
+class UserWidget extends StatelessWidget {
+  final User user;
+  const UserWidget({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Get.put(StoryController()).fetchStories(user.id, context); // Initialize StoryController and fetch stories
+        Get.to(() => StoryScreen());
+      },
+      child: Column(
+        children: [
+          CircleAvatar(
+            backgroundImage: NetworkImage(user.profileImageUrl),
+            radius: 40.0,
+          ),
+          Text(user.name),
+        ],
+      ),
+    );
+  }
+}
+
 class StoryController extends GetxController {
   final UserController userController = Get.find<UserController>();
   final stories = <Story>[].obs;
@@ -50,6 +304,7 @@ class StoryController extends GetxController {
   int _currentUserIndex = 0;
   final videoStatusNotifier = ValueNotifier<bool>(true); // Added ValueNotifier for video status
   final _lastSeenStoryIndex = {}.obs;
+
 
 
   Story get currentStory => stories[_currentIndex.value];
@@ -68,7 +323,6 @@ class StoryController extends GetxController {
 
     super.onInit();
   }
-
 
   @override
   void onClose() {
@@ -92,21 +346,16 @@ class StoryController extends GetxController {
       }
       update();
     });
-
-    // Only initialize and play the video if the media type is video
-    if (currentStory.mediaType == '2') {
-      initializeVideoPlayer(currentStory.url);
-    }
   }
 
-  void initializeVideoPlayer(String url) async {
-    final videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-    );
-    await videoPlayerController.initialize();
-    videoPlayerController.play();
-    videoPlayerController.setLooping(false);
-    update();
+  void pauseStory() {
+    _timer?.cancel();
+    videoStatusNotifier.value = false; // Pause video
+  }
+
+  void resumeStory() {
+    startTimer(resetProgress: false);
+    videoStatusNotifier.value = true; // Play video
   }
 
   void fetchStories(String userId, BuildContext context) async {
@@ -136,13 +385,12 @@ class StoryController extends GetxController {
     // Use CubePageRoute for navigation
     Navigator.of(context).pushReplacement(
       CubePageRoute(
-        enterPage: StoryScreen(),
-        exitPage: StoryScreen(),
+        enterPage: const StoryScreen(),
+        exitPage: const StoryScreen(),
         duration: const Duration(milliseconds: 900),
       ),
     );
   }
-
 
   void nextStory([bool fromTimer = false]) {
     if (_currentIndex.value < stories.length - 1) {
@@ -176,284 +424,10 @@ class StoryController extends GetxController {
       }
     }
   }
-
-
-  _VideoPlayerWidgetState? _videoPlayerWidgetState;
-
-  void setVideoPlayerWidgetState(_VideoPlayerWidgetState state) {
-    _videoPlayerWidgetState = state;
-  }
-
-  void pauseStory() {
-    _timer?.cancel();
-    videoStatusNotifier.value = false; // Pause video
-  }
-
-  void resumeStory() {
-    startTimer(resetProgress: false);
-    videoStatusNotifier.value = true; // Play video
-  }
-
 }
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,);
-
-  Get.put(UserController()); // Add this line
-  Get.put(StoryController()); // Add this line
-
-  runApp(MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return GetMaterialApp(  // Use GetMaterialApp instead of MaterialApp
-      title: 'Flutter Instagram Stories',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: MainScreen(),
-    );
-  }
-}
-
-class MainScreen extends StatelessWidget {
-
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _urlController = TextEditingController();
-  final _mediaTypeController = TextEditingController();
-  String? _selectedUserId;
-
-  @override
-  Widget build(BuildContext context) {
-    return GetBuilder<UserController>(
-        init: UserController(),
-        builder: (userController) {
-          return Scaffold(
-            appBar: AppBar(
-              title: Text('User Stories'),
-              actions: <Widget>[
-                PopupMenuButton<String>(
-                  onSelected: (String result) {
-                    switch(result) {
-                      case 'Create User':
-                        showDialog<void>(
-                          context: context,
-                          barrierDismissible: false, // user must tap button!
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: Text('Create User'),
-                              content: SingleChildScrollView(
-                                child: Form(
-                                  key: _formKey,
-                                  child: ListBody(
-                                    children: <Widget>[
-                                      TextFormField(
-                                        controller: _nameController,
-                                        decoration: InputDecoration(labelText: 'Name'),
-                                        validator: (value) {
-                                          if (value == null || value.isEmpty) {
-                                            return 'Please enter a name';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                      TextFormField(
-                                        controller: _urlController,
-                                        decoration: InputDecoration(labelText: 'Profile Image Url'),
-                                        validator: (value) {
-                                          if (value == null || value.isEmpty) {
-                                            return 'Please enter a profile image url';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              actions: <Widget>[
-                                TextButton(
-                                  child: Text('Cancel'),
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                ),
-                                TextButton(
-                                  child: Text('Create'),
-                                  onPressed: () {
-                                    if (_formKey.currentState!.validate()) {
-                                      addUserToFirestore(
-                                          _nameController.text, _urlController.text);
-                                      _nameController.clear();
-                                      _urlController.clear();
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                        break;
-                      case 'Create Story':
-                        showDialog<void>(
-                          context: context,
-                          barrierDismissible: false, // user must tap button!
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: Text('Create Story'),
-                              content: SingleChildScrollView(
-                                child: Form(
-                                  key: _formKey,
-                                  child: ListBody(
-                                    children: <Widget>[
-                                      DropdownButtonFormField<String>(
-                                        value: _selectedUserId,
-                                        hint: Text("Select User"),
-                                        items: userController.users.map((User user) {
-                                          return DropdownMenuItem<String>(
-                                            value: user.id,
-                                            child: Text(user.name),
-                                          );
-                                        }).toList(),
-                                        onChanged: (String? newValue) {
-                                          _selectedUserId = newValue!;
-                                        },
-                                        validator: (value) {
-                                          if (value == null || value.isEmpty) {
-                                            return 'Please select a user';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                      TextFormField(
-                                        controller: _urlController,
-                                        decoration: InputDecoration(labelText: 'Story Url'),
-                                        validator: (value) {
-                                          if (value == null || value.isEmpty) {
-                                            return 'Please enter a story url';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                      DropdownButtonFormField<String>(
-                                        value: _mediaTypeController.text.isNotEmpty ? _mediaTypeController.text : null,
-                                        hint: Text("Select Media Type"),
-                                        items: <String>['1', '2']
-                                            .map<DropdownMenuItem<String>>((String value) {
-                                          return DropdownMenuItem<String>(
-                                            value: value,
-                                            child: Text(value == '1' ? 'Image' : 'Video'),
-                                          );
-                                        }).toList(),
-                                        onChanged: (String? newValue) {
-                                          _mediaTypeController.text = newValue!;
-                                        },
-                                        validator: (value) {
-                                          if (value == null || value.isEmpty) {
-                                            return 'Please select a media type';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              actions: <Widget>[
-                                TextButton(
-                                  child: Text('Cancel'),
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                ),
-                                TextButton(
-                                  child: Text('Create'),
-                                  onPressed: () {
-                                    if (_formKey.currentState!.validate()) {
-                                      addStoryToFirestore(
-                                          _selectedUserId!, _urlController.text, _mediaTypeController.text);
-                                      _urlController.clear();
-                                      _mediaTypeController.clear();
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                        break;
-                    }
-                  },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'Create User',
-                      child: Text('Create User'),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'Create Story',
-                      child: Text('Create Story'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            body: RefreshIndicator(
-              onRefresh: () async {
-                // Here you call a function that fetches the latest data
-                // For example:
-                userController.refreshUsers();
-              },
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                ),
-                itemCount: userController.users.length,
-                itemBuilder: (context, index) => UserWidget(user: userController.users[index]),
-              ),
-            ),
-          );
-        },
-    );
-  }
-}
-
-class UserWidget extends StatelessWidget {
-  final User user;
-  const UserWidget({super.key, required this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Get.put(StoryController()).fetchStories(user.id, context); // Initialize StoryController and fetch stories
-        Get.to(() => StoryScreen());
-      },
-      child: Column(
-        children: [
-          CircleAvatar(
-            backgroundImage: NetworkImage(user.profileImageUrl),
-            radius: 40.0,
-          ),
-          Text(user.name),
-        ],
-      ),
-    );
-  }
-}
-
 
 class StoryScreen extends StatelessWidget {
-  const StoryScreen({super.key});
+  const StoryScreen({Key? key}): super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -495,7 +469,7 @@ class StoryScreen extends StatelessWidget {
                                 ? storyController._progressList[index].value
                                 : 0.0,
                             backgroundColor: Colors.grey,
-                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                            valueColor: const AlwaysStoppedAnimation(Colors.white),
                           )),
                         ),
                       ),
@@ -504,25 +478,28 @@ class StoryScreen extends StatelessWidget {
                 ),
               ),
             ),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: storyController.stories.isEmpty
-                        ? Center(child: CircularProgressIndicator())
-                        : storyController.currentStory.mediaType == '1'
-                        ? Image.network(storyController.currentStory.url)
-                        : StatefulBuilder(
-                      builder: (BuildContext context, StateSetter setState) {
-                        VideoPlayerWidget videoPlayerWidget = VideoPlayerWidget(url: storyController.currentStory.url);
-                        storyController.setVideoPlayerWidgetState(videoPlayerWidget.createState());
-                        return videoPlayerWidget;
-                      },
-                    ),
-                  ),
-                ],
+            body: PageView.builder(
+              controller: PageController(
+                initialPage: storyController._currentUserIndex,
               ),
+              itemCount: storyController.userController.users.length,
+              onPageChanged: (index) {
+                storyController.fetchStories(storyController.userController.users[index].id, context);
+              },
+              itemBuilder: (BuildContext context, int index) {
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: storyController.stories.isEmpty
+                          ? const Center(child: CircularProgressIndicator())
+                          : storyController.currentStory.mediaType == '1'
+                          ? Image.network(storyController.currentStory.url)
+                          : VideoPlayerWidget(url: storyController.currentStory.url),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         );
@@ -534,7 +511,7 @@ class StoryScreen extends StatelessWidget {
 class VideoPlayerWidget extends StatefulWidget {
   final String url;
 
-  VideoPlayerWidget({required this.url});
+  VideoPlayerWidget({super.key, required this.url});
 
   @override
   _VideoPlayerWidgetState createState() => _VideoPlayerWidgetState();
