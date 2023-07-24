@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cube_transition_plus/cube_transition_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 import 'story_model.dart';
@@ -13,9 +16,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,);
 
-  Get.put(UserController()); // Add this line
-  Get.put(StoryController()); // Add this line
-
+  Get.put(UserController());
+  Get.put(StoryController());
+  Get.put(AuthController());
   runApp(const MyApp());
 }
 
@@ -23,7 +26,7 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return GetMaterialApp(  // Use GetMaterialApp instead of MaterialApp
+    return GetMaterialApp(
       title: 'Flutter Instagram Stories',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -58,7 +61,7 @@ class MainScreen extends StatelessWidget {
                     case 'Create User':
                       showDialog<void>(
                         context: context,
-                        barrierDismissible: false, // user must tap button!
+                        barrierDismissible: false,
                         builder: (BuildContext context) {
                           return AlertDialog(
                             title: const Text('Create User'),
@@ -118,7 +121,7 @@ class MainScreen extends StatelessWidget {
                     case 'Create Story':
                       showDialog<void>(
                         context: context,
-                        barrierDismissible: false, // user must tap button!
+                        barrierDismissible: false,
                         builder: (BuildContext context) {
                           return AlertDialog(
                             title: const Text('Create Story'),
@@ -196,33 +199,18 @@ class MainScreen extends StatelessWidget {
                                     _urlController.clear();
                                     _mediaTypeController.clear();
                                     Navigator.of(context).pop();
-                                  }
-                                },
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                      break;
-                  }
-                },
+                                  }},),],);},);
+                      break;}},
                 itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                   const PopupMenuItem<String>(
                     value: 'Create User',
-                    child: Text('Create User'),
-                  ),
+                    child: Text('Create User'),                  ),
                   const PopupMenuItem<String>(
                     value: 'Create Story',
                     child: Text('Create Story'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                  ),                ],              ),            ],          ),
           body: RefreshIndicator(
             onRefresh: () async {
-              // Here you call a function that fetches the latest data
-              // For example:
               userController.refreshUsers();
             },
             child: GridView.builder(
@@ -231,11 +219,63 @@ class MainScreen extends StatelessWidget {
               ),
               itemCount: userController.users.length,
               itemBuilder: (context, index) => UserWidget(user: userController.users[index]),
-            ),
-          ),
-        );
-      },
+            ),),);},);}}
+
+class AuthController extends GetxController {
+  final auth.FirebaseAuth _auth = auth.FirebaseAuth.instance;
+  bool get isAuthenticated => _user != null;
+
+  auth.User? _user;
+
+  auth.User? get user => _user;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _user = _auth.currentUser;
+    _auth.authStateChanges().listen(_onAuthStateChanged);
+  }
+
+  Future<void> _onAuthStateChanged(auth.User? firebaseUser) async {
+    if (firebaseUser == null) {
+      _user = null;
+    } else {
+      _user = firebaseUser;
+      await signInWithGoogle();
+    }
+    update();
+  }
+
+  Future<void> signOut() async {
+    await _auth.signOut();
+    _user = null;
+    update();
+  }
+
+  Future<void> signInWithGoogle() async {
+    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+    final GoogleSignInAuthentication googleAuth = await googleUser!.authentication;
+
+    final credential = auth.GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
     );
+
+    final userCredential = await auth.FirebaseAuth.instance.signInWithCredential(credential);
+    final user = userCredential.user;
+
+    // Check if user id already exists in Firestore
+    var userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+
+    if (!userDoc.exists) {
+      // If user id not exists, create new user document in Firestore
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'id': user.uid,
+        'name': user.displayName ?? user.email,
+        'profileUrl': user.photoURL ??
+            'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png',
+      });
+    }
   }
 }
 
@@ -253,35 +293,45 @@ class UserController extends GetxController {
   void fetchUsers() async {
     try {
       List<User> fetchedUsers = await _userData.getAllUsers();
-      if (fetchedUsers.isNotEmpty) {
-        users.assignAll(fetchedUsers);
-        print('Users fetched successfully: ${users.length}');
+      StoryData storyData = StoryData();
+      List<User> usersWithStories = [];
+
+      for (var user in fetchedUsers) {
+        var stories = await storyData.getStoriesForUser(user.id);
+        if (stories.isNotEmpty) {
+          usersWithStories.add(user);
+        }
+      }
+
+      if (usersWithStories.isNotEmpty) {
+        users.assignAll(usersWithStories);
+        print('Users with stories fetched successfully: ${users.length}');
         update();  // force update
       } else {
-        print('No users found.');
+        print('No users with stories found.');
       }
     } catch (e) {
       print('Failed to fetch users: $e');
     }
   }
 
+
   void refreshUsers() {
     users.clear();
-    fetchUsers();  // Assuming userData.getUsers() fetches the latest users
+    fetchUsers();
   }
 }
 
 class UserWidget extends StatelessWidget {
   final User user;
-  const UserWidget({super.key, required this.user});
+  const UserWidget({Key? key, required this.user}): super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Get.put(StoryController()).fetchStories(user.id, context); // Initialize StoryController and fetch stories
-        Get.to(() => StoryScreen());
-      },
+        Get.put(StoryController()).fetchStories(user.id, context);
+        Get.to(() => const StoryScreen(), transition: Transition.noTransition); },
       child: Column(
         children: [
           CircleAvatar(
@@ -302,7 +352,7 @@ class StoryController extends GetxController {
   List<RxDouble> _progressList = [];
   Timer? _timer;
   int _currentUserIndex = 0;
-  final videoStatusNotifier = ValueNotifier<bool>(true); // Added ValueNotifier for video status
+  final videoStatusNotifier = ValueNotifier<bool>(true);
   final _lastSeenStoryIndex = {}.obs;
 
 
@@ -332,10 +382,10 @@ class StoryController extends GetxController {
 
   void startTimer({bool resetProgress = true}) {
     const oneSec = Duration(seconds: 1);
-    int duration = currentStory.duration ?? 5;  // Default duration is 5 seconds for images
+    int duration = currentStory.duration ?? 5;
     _timer?.cancel();
     if (resetProgress) {
-      _progressList[_currentIndex.value].value = 0.0;  // Reset the progress of the current story
+      _progressList[_currentIndex.value].value = 0.0;
     }
     _timer = Timer.periodic(oneSec, (Timer timer) {
       if (_progressList[_currentIndex.value].value < 1.0) {
@@ -382,7 +432,6 @@ class StoryController extends GetxController {
     update();
     startTimer();
 
-    // Use CubePageRoute for navigation
     Navigator.of(context).pushReplacement(
       CubePageRoute(
         enterPage: const StoryScreen(),
@@ -433,6 +482,7 @@ class StoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetBuilder<StoryController>(
       builder: (storyController) {
+        User currentUser = storyController.userController.users[storyController._currentUserIndex];
         return GestureDetector(
           onTapUp: (details) {
             var screenWidth = MediaQuery.of(context).size.width;
@@ -450,7 +500,22 @@ class StoryScreen extends StatelessWidget {
           },
           child: Scaffold(
             appBar: AppBar(
-              title: const Text('Story Screen'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+              title: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundImage: NetworkImage(currentUser.profileImageUrl),
+                    radius: 20.0,
+                  ),
+                  const SizedBox(width: 8.0),
+                  Text(currentUser.name),
+                ],
+              ),
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(4.0),
                 child: Padding(
@@ -529,7 +594,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         _controller.play();
       });
 
-    // Listen to videoStatusNotifier and play or pause video accordingly
     Get.find<StoryController>().videoStatusNotifier.addListener(() {
       if (Get.find<StoryController>().videoStatusNotifier.value) {
         _controller.play();

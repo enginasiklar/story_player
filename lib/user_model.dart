@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class User {
   final String id;
@@ -48,5 +50,8 @@ Future<void> addUserToFirestore(String name, String profileImageUrl) async {
         : 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png',
   });
 }
+
+
+
 
 

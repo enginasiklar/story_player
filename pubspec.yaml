@@ -44,7 +44,8 @@ dependencies:
   cube_transition_plus: ^2.0.1
   flutter_swiper_plus: ^2.0.4
   transparent_image: ^2.0.1
-
+  firebase_auth: ^4.7.1
+  google_sign_in: ^6.1.4
 
 dev_dependencies:
   flutter_test:
