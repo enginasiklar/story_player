@@ -133,7 +133,7 @@ class MainScreen extends StatelessWidget {
                                     DropdownButtonFormField<String>(
                                       value: _selectedUserId,
                                       hint: const Text("Select User"),
-                                      items: userController.users.map((User user) {
+                                      items: userController.allUsers.map((User user) {
                                         return DropdownMenuItem<String>(
                                           value: user.id,
                                           child: Text(user.name),
@@ -283,11 +283,14 @@ class UserController extends GetxController {
 
   final UserData _userData = UserData();
   RxList<User> users = RxList<User>();
+  RxList<User> allUsers = RxList<User>();  // List to hold all users
+
 
   @override
   void onInit() {
     super.onInit();
     fetchUsers();
+    fetchAllUsers();
   }
 
   void fetchUsers() async {
@@ -315,6 +318,20 @@ class UserController extends GetxController {
     }
   }
 
+  void fetchAllUsers() async {
+    try {
+      List<User> fetchedUsers = await _userData.getAllUsers();
+      if (fetchedUsers.isNotEmpty) {
+        allUsers.assignAll(fetchedUsers);
+        print('All users fetched successfully: ${allUsers.length}');
+        update();  // force update
+      } else {
+        print('No users found.');
+      }
+    } catch (e) {
+      print('Failed to fetch all users: $e');
+    }
+  }
 
   void refreshUsers() {
     users.clear();
